@@ -1,0 +1,306 @@
+#import and dataset
+import pathlib
+import tensorflow as tf
+import matplotlib.pyplot as plt
+import numpy as np
+import PIL
+
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras.models import Sequential
+
+dataset_url = "https://storage.googleapis.com/download.tensorflow.org/example_images/flower_photos.tgz"
+data_dir = tf.keras.utils.get_file('flower_photos', origin=dataset_url, untar=True)
+data_dir = pathlib.Path(data_dir)
+#_________________________________________________________________________________
+# plot
+
+image_count = len(list(data_dir.glob('*/*.jpg')))
+print(image_count)
+
+roses = list(data_dir.glob('roses/*'))
+PIL.Image.open(str(roses[0]))
+
+tulips = list(data_dir.glob('tulips/*'))
+PIL.Image.open(str(tulips[0]))
+#_________________________________________________________________________________
+batch_size = 32
+img_height = 100
+img_width = 100
+# train_set
+train_ds = tf.keras.utils.image_dataset_from_directory(
+  data_dir,
+  validation_split=0.2,
+  subset="training",
+  seed=123,
+  image_size=(img_height, img_width),
+  batch_size=batch_size)
+# vaidation_set
+val_ds = tf.keras.utils.image_dataset_from_directory(
+  data_dir,
+  validation_split=0.2,
+  subset="validation",
+  seed=123,
+  image_size=(img_height, img_width),
+  batch_size=batch_size)
+
+class_names = train_ds.class_names
+print(class_names)
+print(len(class_names))
+#____________________________________________________________
+#plot with labels
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(10, 10))
+for images, labels in train_ds.take(1):
+  for i in range(9):
+    ax = plt.subplot(3, 3, i + 1)
+    plt.imshow(images[i].numpy().astype("uint8"))
+    plt.title(class_names[labels[i]])
+    plt.axis("off")
+#______________________________________________________________
+# configure image augmentation
+from numpy import expand_dims
+from  tensorflow.keras.utils import load_img
+from tensorflow.keras.utils import img_to_array
+from keras.preprocessing.image import ImageDataGenerator
+from matplotlib import pyplot
+# load the image
+img = load_img('/content/photo-1562690868-60bbe7293e94 (1).jpeg')
+
+data = img_to_array(img)
+
+samples = expand_dims(data, 0)
+# image data augmentation generator
+datagen = ImageDataGenerator(#width_shift_range=0.25,
+                             #rotation_range=50,
+                             #height_shift_range=0.25,
+                             #shear_range=0.1,
+                             #zoom_range=0.4,
+                             #brightness_range=(0.8, 1.2),
+                             #horizontal_flip=True
+                             )
+
+it = datagen.flow(samples, batch_size=10)
+for i in range(9):
+ pyplot.subplot(330 + 1 + i)
+ batch = it.next()
+ image = batch[0].astype('uint8')
+ pyplot.imshow(image)
+
+pyplot.show()
+#____________________________________________________________
+for image_batch, labels_batch in train_ds:
+  print(image_batch.shape)
+  print(labels_batch.shape)
+  break
+#autotune for faster training
+AUTOTUNE = tf.data.AUTOTUNE
+
+train_ds = train_ds.cache().shuffle(1000).prefetch(buffer_size=AUTOTUNE)
+val_ds = val_ds.cache().prefetch(buffer_size=AUTOTUNE)
+#___________________________________________________________________________
+#data augmentaion using ImageDataGenerator
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+
+# All images will be rescaled by 1./255.
+# Apply data augmentation
+train_datagen = ImageDataGenerator(
+      rescale=1./255,
+      rotation_range=10,
+      width_shift_range=0.25,
+      height_shift_range=0.25,
+      shear_range=0.1,
+      zoom_range=0.4,
+      brightness_range=(0.8, 1.2),
+      horizontal_flip=True,
+      fill_mode='nearest')
+
+
+test_datagen  = ImageDataGenerator( rescale = 1.0/255. )
+
+# --------------------
+# Flow training images in batches of 64 using train_datagen generator
+# --------------------
+train_generator = train_datagen.flow_from_directory(data_dir,
+                                                    batch_size=64,
+                                                    class_mode='binary',
+                                                    target_size=(100, 100))
+# --------------------
+# Flow validation images in batches of 64 using test_datagen generator
+# --------------------
+test_generator =  test_datagen.flow_from_directory(data_dir,
+                                                         batch_size=64,
+                                                         class_mode  = 'binary',
+                                                         target_size = (100, 100))
+#___________________________________________________________________________________
+#model
+num_classes = len(class_names)
+
+
+model = tf.keras.models.Sequential([
+    # Note the input shape is the desired size of the image 100x100 with 3 bytes color
+    tf.keras.layers.Conv2D(32, (3,3), activation='relu', input_shape=(100, 100,3)),
+    tf.keras.layers.MaxPooling2D(2,2),
+    tf.keras.layers.Conv2D(64, (3,3), activation='relu'),
+    tf.keras.layers.MaxPooling2D(2,2),
+    tf.keras.layers.Conv2D(128, (3,3), activation='relu'),
+    tf.keras.layers.MaxPooling2D(2,2),
+
+    # Flatten the results to feed into a DNN
+    tf.keras.layers.Flatten(),
+    # neuron hidden layer
+    tf.keras.layers.Dense(128,activation="relu"),
+    tf.keras.layers.Dropout(0.5),
+
+    tf.keras.layers.Dense(num_classes, activation='softmax')])
+
+  num_classes = len(class_names)
+
+model.compile(optimizer='adam',
+              loss=tf.keras.losses.SparseCategoricalCrossentropy(),
+              metrics=['accuracy'])
+
+model.summary()
+#______________________________________________________________________
+#train
+epochs=20
+history = model.fit(
+  train_generator,
+  validation_data=test_generator,
+  epochs=epochs
+)
+#__________________________________________________________________________
+#save model
+model.save("model_flower.h5")
+#__________________________________________________________________________
+acc = history.history['accuracy']
+val_acc = history.history['val_accuracy']
+
+loss = history.history['loss']
+val_loss = history.history['val_loss']
+
+epochs_range = range(epochs)
+
+plt.figure(figsize=(8, 8))
+plt.subplot(1, 2, 1)
+plt.plot(epochs_range, acc, label='Training Accuracy')
+plt.plot(epochs_range, val_acc, label='Validation Accuracy')
+plt.legend(loc='lower right')
+plt.title('Training and Validation Accuracy')
+
+plt.subplot(1, 2, 2)
+plt.plot(epochs_range, loss, label='Training Loss')
+plt.plot(epochs_range, val_loss, label='Validation Loss')
+plt.legend(loc='upper right')
+plt.title('Training and Validation Loss')
+plt.show()
+#________________________________________________________________________
+#predict colab code
+
+import numpy as np
+
+from google.colab import files
+from tensorflow.keras.utils import load_img, img_to_array
+
+uploaded=files.upload()
+
+for fn in uploaded.keys():
+
+  # predicting images
+  path='/content/' + fn
+  img=load_img(path, target_size=(100, 100))
+  img_array = tf.keras.utils.img_to_array(img)
+img_array = tf.expand_dims(img_array, 0) # Create a batch
+
+predictions = model.predict(img_array)
+score = tf.nn.softmax(predictions[0])
+
+print(
+    "This image most likely belongs to {}"
+    .format(class_names[np.argmax(score)])
+)
+#___________________________________________________________________
+# python GUI
+import tkinter as tk
+from tkinter import filedialog
+from tkinter import *
+from PIL import ImageTk, Image
+import tensorflow as tf
+import numpy as np
+import pathlib
+from keras.preprocessing.image import img_to_array # if not working try utils
+#from tensorflow.keras.utils import img_to_array
+#load the trained model to classify the images
+from keras.models import load_model
+from keras.preprocessing.image import load_img
+model = load_model('model_flower.h5')
+#_________________________________________________
+dataset_url = "https://storage.googleapis.com/download.tensorflow.org/example_images/flower_photos.tgz"
+data_dir = tf.keras.utils.get_file('flower_photos', origin=dataset_url, untar=True)
+data_dir = pathlib.Path(data_dir)
+
+batch_size = 32
+img_height = 100
+img_width = 100
+
+train_ds = tf.keras.utils.image_dataset_from_directory(
+  data_dir,
+  validation_split=0.2,
+  subset="training",
+  seed=123,
+  image_size=(img_height, img_width),
+  batch_size=batch_size)
+
+
+class_names = train_ds.class_names
+print(class_names)
+print(len(class_names))
+#__________________________________________________
+#initialise GUI
+top=tk.Tk()
+top.geometry('800x600')
+top.title('Flower Image Classification')
+top.configure(background='orange')
+label=Label(top,background='black', font=('arial',15,'bold'))
+sign_image = Label(top)
+def classify(file_path):
+    global label_packed
+    image = Image.open(file_path)
+    image = image.resize((100, 100))
+    image = img_to_array(image)
+    image = np.expand_dims(image, axis=0)
+    image /= 255
+    sign = model.predict(image)
+    score = tf.nn.softmax(sign[0])
+    output =("This image most likely belongs to {}".format(class_names[np.argmax(score)]))
+    label.configure(background='black',foreground='white', text= output)
+def show_classify_button(file_path):
+    classify_b=Button(top,text="Classify Image",
+   command=lambda: classify(file_path),padx=10,pady=5)
+    classify_b.configure(background='black', foreground='white',
+                         font=('arial',10,'bold'))
+    classify_b.place(relx=0.79,rely=0.46)
+def upload_image():
+    try:
+        file_path=filedialog.askopenfilename()
+        uploaded=Image.open(file_path)
+        uploaded.thumbnail(((top.winfo_width()/2),(top.winfo_height()/2)))
+        im=ImageTk.PhotoImage(uploaded)
+        sign_image.configure(image=im)
+        sign_image.image=im
+        label.configure(text='')
+        show_classify_button(file_path)
+    except:
+        pass
+upload=Button(top,text="Upload an image",command=upload_image,
+              padx=10,pady=5)
+upload.configure(background='black', foreground='white',
+                 font=('arial',10,'bold'))
+upload.pack(side=BOTTOM,pady=50)
+sign_image.pack(side=BOTTOM,expand=True)
+label.pack(side=BOTTOM,expand=True)
+heading = Label(top, text="Flower Image Classification",pady=20, font=('arial',20,'bold'))
+heading.configure(background='black',foreground='white')
+heading.pack()
+top.mainloop()
